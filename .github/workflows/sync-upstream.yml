@@ -1,0 +1,76 @@
+# Weekly check for new commits in ykoellmann/obsidian-mcp.
+# Opens (or updates) a PR "Sync with upstream" into main - merging it triggers CI -> Docker -> homelab deploy.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM: https://github.com/ykoellmann/obsidian-mcp.git
+  BRANCH: sync/upstream
+  # gh would otherwise pick the upstream repo once the "upstream" remote exists
+  GH_REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "$UPSTREAM"
+          git fetch upstream main
+
+      - name: Count new upstream commits
+        id: check
+        run: |
+          count=$(git rev-list --count HEAD..upstream/main)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "New upstream commits: $count"
+
+      - name: Merge upstream into sync branch
+        if: steps.check.outputs.count != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::Merge conflict with upstream - resolve manually (git merge upstream/main)"
+            exit 1
+          fi
+          if ! git push --force origin "$BRANCH"; then
+            echo "::error::Push failed - upstream probably changed .github/workflows (GITHUB_TOKEN cannot push workflow files). Use 'Sync fork' on GitHub instead."
+            exit 1
+          fi
+
+      - name: Open or update PR
+        if: steps.check.outputs.count != '0'
+        env:
+          COUNT: ${{ steps.check.outputs.count }}
+        run: |
+          title="Sync with upstream ($COUNT commits)"
+          {
+            echo "New commits from [ykoellmann/obsidian-mcp](https://github.com/ykoellmann/obsidian-mcp):"
+            echo
+            git log --no-merges --format='- %h %s (%an)' origin/main..upstream/main
+            echo
+            echo "Merging this PR runs CI -> builds the Docker image -> updates the tag in dariuszpaluch/homelab -> the homelab redeploys notes-mcp."
+          } > pr-body.md
+          existing=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body-file pr-body.md
+            echo "Updated PR #$existing"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body-file pr-body.md
+          fi
