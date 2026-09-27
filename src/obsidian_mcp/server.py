@@ -40,6 +40,7 @@ from .envelope import (
     read_result,
     write_result,
 )
+from .fork_tools import register_fork_tools
 from .storage.filesystem import VaultStorage
 from .storage.policy import (
     InvalidFileTypeError,
@@ -2159,6 +2160,9 @@ def list_trash_tool(vault: str | None = None) -> dict:
 
 if _feature_flags.enable_delete:
     mcp.tool()(list_trash_tool)
+
+# Fork-only tools (link-safe move, archive, chunked upload), each opt-in by env.
+register_fork_tools(mcp, _index)
 
 
 # ── MCP Resources ─────────────────────────────────────────────────────────────
