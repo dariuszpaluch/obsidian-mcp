@@ -17,12 +17,13 @@ async def test_prompts_are_listed():
 
 
 @pytest.mark.asyncio
-async def test_weekly_review_prompt_mentions_get_tasks_tool():
+async def test_weekly_review_prompt_reads_kanban_boards():
     async with Client(server.mcp) as client:
         result = await client.get_prompt("weekly_review")
 
     text = result.messages[0].content.text
-    assert "get_tasks_tool" in text
+    assert "read_kanban_tool" in text
+    assert "get_tasks_tool" not in text
 
 
 @pytest.mark.asyncio
@@ -42,3 +43,11 @@ async def test_daily_note_prompt_defaults_to_today():
 
     text = result.messages[0].content.text
     assert "'today'" in text
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_tool_is_not_registered():
+    async with Client(server.mcp) as client:
+        tools = await client.list_tools()
+
+    assert "get_tasks_tool" not in {t.name for t in tools}

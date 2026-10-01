@@ -12,8 +12,9 @@ def weekly_review_prompt() -> str:
     return """\
 Do a weekly review of this Obsidian vault:
 
-1. Call get_tasks_tool(status="open") and pick out anything with a due date
-   (`due`) in the last 7 days, plus anything overdue.
+1. Read the Kanban boards (read_kanban_tool) and pick out open cards in
+   In Progress and To Do, plus anything with a due date in the last 7 days
+   or overdue.
 2. Find this week's daily notes: call
    get_periodic_note_tool(period="daily", date=...) for each of the last 7
    days (today and the 6 before it); skip days with no note.
@@ -37,6 +38,5 @@ Prepare the daily note for date={date!r}:
    otherwise write_note_tool with a minimal structure (heading + empty task
    list) at the conventional path.
 3. Carry over open tasks from the previous day's note
-   (get_periodic_note_tool with the prior date, or get_tasks_tool filtered to
-   that note) into today's note, so nothing open silently falls off.
+   (get_periodic_note_tool with the prior date) into today's note, so nothing open silently falls off.
 """
