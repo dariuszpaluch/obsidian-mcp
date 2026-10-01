@@ -1961,6 +1961,7 @@ if _feature_flags.enable_kanban:
         vault: str | None = None,
     ) -> dict:
         """Add a card to a Kanban column. Card is inserted at the top of the column.
+        done=true also appends today's [completion:: DD.MM.YYYY] date.
         data: {column, card, done}."""
         return _write_envelope(
             add_kanban_card(
@@ -1984,7 +1985,8 @@ if _feature_flags.enable_kanban:
         expected_revision: str | None = None,
         vault: str | None = None,
     ) -> dict:
-        """Move a card from one column to another. done=true/false updates the tick state.
+        """Move a card from one column to another. done=true/false updates the tick state;
+        a card ticked by the move gets today's [completion:: DD.MM.YYYY] date (data.card is the new text).
         data: {card, from, to}."""
         return _write_envelope(
             move_kanban_card(

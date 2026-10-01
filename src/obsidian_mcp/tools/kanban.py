@@ -9,6 +9,7 @@ A Kanban board is a Markdown note with:
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from ..config import get_config
 from ..domain.index import VaultIndex
@@ -24,6 +25,9 @@ _CARD_RE = re.compile(r"^- \[([ xX])\] (.+)$", re.MULTILINE)
 _H2_RE = re.compile(r"^## (.+?)[ \t]*$", re.MULTILINE)
 # Kanban settings block at end of file
 _SETTINGS_RE = re.compile(r"\n?%%.*?%%[ \t]*$", re.DOTALL)
+# Inline field the Obsidian Kanban plugin's "completion" date uses on finished cards
+_COMPLETION_FIELD = "[completion::"
+_COMPLETION_DATE_FORMAT = "%d.%m.%Y"
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -121,7 +125,7 @@ def add_kanban_card(
     lock = acquire_lock(path, lock_path=cfg.lock_path)
     try:
         raw, current_revision = read_text_for_update(storage, path, expected_revision)
-        patched = _add_card(raw, column, text, done)
+        patched, text = _add_card(raw, column, text, done)
         revision = storage.write_text_atomic(
             path, patched, expected_revision=current_revision
         )
@@ -160,8 +164,8 @@ def move_kanban_card(
     lock = acquire_lock(path, lock_path=cfg.lock_path)
     try:
         raw, current_revision = read_text_for_update(storage, path, expected_revision)
-        patched, moved = _move_card(raw, card_text, from_column, to_column, done)
-        if not moved:
+        patched, moved_text = _move_card(raw, card_text, from_column, to_column, done)
+        if moved_text is None:
             raise ValueError(f"Card {card_text!r} not found in column {from_column!r}")
         revision = storage.write_text_atomic(
             path, patched, expected_revision=current_revision
@@ -175,7 +179,7 @@ def move_kanban_card(
     return revision_result({
         "path": path,
         "status": "moved",
-        "card": card_text,
+        "card": moved_text,
         "from": from_column,
         "to": to_column,
     }, revision)
@@ -260,13 +264,21 @@ def _section_bounds(raw: str, column: str) -> tuple[int, int] | None:
     return start, end
 
 
-def _add_card(raw: str, column: str, text: str, done: bool) -> str:
+def _with_completion(text: str) -> str:
+    """Append today's completion date to a card that has none."""
+    if _COMPLETION_FIELD in text:
+        return text
+    return f"{text} {_COMPLETION_FIELD} {date.today().strftime(_COMPLETION_DATE_FORMAT)}]"
+
+
+def _add_card(raw: str, column: str, text: str, done: bool) -> tuple[str, str]:
     bounds = _section_bounds(raw, column)
     if bounds is None:
         raise ValueError(f"Column {column!r} not found in Kanban board")
     start, _ = bounds
     marker = "[x]" if done else "[ ]"
-    return raw[:start] + f"- {marker} {text}\n" + raw[start:]
+    text = _with_completion(text) if done else text
+    return raw[:start] + f"- {marker} {text}\n" + raw[start:], text
 
 
 def _move_card(
@@ -275,10 +287,12 @@ def _move_card(
     from_col: str,
     to_col: str,
     done: bool | None,
-) -> tuple[str, bool]:
+) -> tuple[str, str | None]:
+    """Move a card; returns (new raw, card text as written) or (raw, None) when not found.
+    A card ticked by this move gets today's completion date."""
     from_bounds = _section_bounds(raw, from_col)
     if from_bounds is None:
-        return raw, False
+        return raw, None
 
     f_start, f_end = from_bounds
     section = raw[f_start:f_end]
@@ -286,11 +300,13 @@ def _move_card(
     card_re = re.compile(r"^- \[([ xX])\] " + escaped + r"[ \t]*$", re.MULTILINE)
     cm = card_re.search(section)
     if not cm:
-        return raw, False
+        return raw, None
 
     original_done = cm.group(1).lower() == "x"
     new_done = done if done is not None else original_done
     marker = "[x]" if new_done else "[ ]"
+    if new_done and not original_done:
+        card_text = _with_completion(card_text)
 
     # Absolute positions
     abs_start = f_start + cm.start()
@@ -307,7 +323,7 @@ def _move_card(
         raise ValueError(f"Column {to_col!r} not found in Kanban board")
     insert_at = to_bounds[0]
     result = without_card[:insert_at] + f"- {marker} {card_text}\n" + without_card[insert_at:]
-    return result, True
+    return result, card_text
 
 
 def _delete_card(raw: str, card_text: str, column: str | None) -> tuple[str, bool]:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 import obsidian_mcp.tools.kanban as kanban_module
@@ -129,8 +131,17 @@ def test_add_kanban_card_done(vault_factory):
     add_kanban_card("board.md", "Done", "Already done", done=True)
     board = read_kanban("board.md")
     done_col = next(c for c in board["columns"] if c["name"] == "Done")
-    new_card = next(c for c in done_col["cards"] if c["text"] == "Already done")
+    new_card = next(c for c in done_col["cards"] if c["text"].startswith("Already done"))
     assert new_card["done"] is True
+    assert new_card["text"] == f"Already done [completion:: {date.today():%d.%m.%Y}]"
+
+
+def test_add_kanban_card_open_has_no_completion(vault_factory):
+    vault_factory({"board.md": _BOARD})
+    add_kanban_card("board.md", "Backlog", "New Task")
+    board = read_kanban("board.md")
+    backlog = next(c for c in board["columns"] if c["name"] == "Backlog")
+    assert backlog["cards"][0]["text"] == "New Task"
 
 
 def test_add_kanban_card_inserted_at_top(tmp_path, vault_factory):
@@ -164,8 +175,32 @@ def test_move_kanban_card_updates_done_state(vault_factory):
     move_kanban_card("board.md", "Task A", "Backlog", "Done", done=True)
     board = read_kanban("board.md")
     done_col = next(c for c in board["columns"] if c["name"] == "Done")
-    moved = next(c for c in done_col["cards"] if c["text"] == "Task A")
+    moved = next(c for c in done_col["cards"] if c["text"].startswith("Task A"))
     assert moved["done"] is True
+
+
+def test_move_kanban_card_ticked_gets_completion_date(vault_factory):
+    vault_factory({"board.md": _BOARD})
+    result = move_kanban_card("board.md", "Task A", "Backlog", "Done", done=True)
+    expected = f"Task A [completion:: {date.today():%d.%m.%Y}]"
+    assert result["card"] == expected
+    done_col = next(c for c in read_kanban("board.md")["columns"] if c["name"] == "Done")
+    assert done_col["cards"][0]["text"] == expected
+
+
+def test_move_kanban_card_keeps_existing_completion_date(vault_factory):
+    board = _BOARD.replace("Task A", "Task A [completion:: 01.01.2026]")
+    vault_factory({"board.md": board})
+    move_kanban_card("board.md", "Task A [completion:: 01.01.2026]", "Backlog", "Done", done=True)
+    done_col = next(c for c in read_kanban("board.md")["columns"] if c["name"] == "Done")
+    assert done_col["cards"][0]["text"] == "Task A [completion:: 01.01.2026]"
+
+
+def test_move_kanban_card_without_ticking_adds_no_completion(vault_factory):
+    vault_factory({"board.md": _BOARD})
+    move_kanban_card("board.md", "Task A", "Backlog", "In Progress")
+    in_progress = next(c for c in read_kanban("board.md")["columns"] if c["name"] == "In Progress")
+    assert in_progress["cards"][0]["text"] == "Task A"
 
 
 def test_move_kanban_card_preserves_done_state_by_default(vault_factory):
