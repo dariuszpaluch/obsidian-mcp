@@ -14,6 +14,7 @@ from ..config import get_config
 from ..domain.index import VaultIndex
 from ..storage.filesystem import VaultStorage
 from ..storage.locking import acquire_lock
+from ..storage.policy import ProtectedPathError
 from .links import LinkContext, Resolver, rewrite_links
 
 _DEFAULT_ARCHIVE_FOLDER = "_99_Archives"
@@ -48,11 +49,10 @@ def relocate(
 
     files = [item.relative for item in storage.list_files()]
     moved = _moved_files(authorization.paths, source, destination, set(files))
-    rewrites = _plan_rewrites(storage, files, moved, (source, destination) if is_folder else None)
-    for rewrite in rewrites:
-        storage.resolve_write(rewrite.path)  # preflight before any mutation
+    planned = _plan_rewrites(storage, files, moved, (source, destination) if is_folder else None)
+    rewrites, skipped = _split_protected(storage, planned)
 
-    result = _summary(source, destination, is_folder, moved, rewrites, dry_run)
+    result = _summary(source, destination, is_folder, moved, rewrites, skipped, dry_run)
     if dry_run:
         return result
     _apply(storage, source, destination, authorization, rewrites)
@@ -115,6 +115,22 @@ def _plan_rewrites(
     return rewrites
 
 
+def _split_protected(storage: VaultStorage, rewrites: list[_Rewrite]) -> tuple[list[_Rewrite], list[str]]:
+    """Preflight every rewrite before any mutation. Notes on deny_write_paths
+    (e.g. a generated VAULT_MAP.md) keep their old links instead of blocking
+    the move; any other write denial still aborts it."""
+    writable: list[_Rewrite] = []
+    skipped: list[str] = []
+    for rewrite in rewrites:
+        try:
+            storage.resolve_write(rewrite.path)
+        except ProtectedPathError:
+            skipped.append(rewrite.path)
+            continue
+        writable.append(rewrite)
+    return writable, skipped
+
+
 def _apply(
     storage: VaultStorage,
     source: str,
@@ -172,6 +188,7 @@ def _summary(
     is_folder: bool,
     moved: dict[str, str],
     rewrites: list[_Rewrite],
+    skipped: list[str],
     dry_run: bool,
 ) -> dict:
     """Describe the move: what moved, which notes' links changed and how."""
@@ -188,6 +205,7 @@ def _summary(
         "kind": kind,
         "files_moved": len(moved),
         "updated_links_in": [moved.get(rewrite.path, rewrite.path) for rewrite in rewrites],
+        "skipped_links_in": skipped,
         "link_changes": len(changes),
         "changes": changes[:_MAX_REPORTED_CHANGES],
         "changes_truncated": len(changes) > _MAX_REPORTED_CHANGES,

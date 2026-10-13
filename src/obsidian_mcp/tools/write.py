@@ -16,7 +16,7 @@ from ..domain.models import (
 from ..envelope import batch_error, batch_item, batch_summary
 from ..storage.filesystem import VaultStorage
 from ..storage.locking import acquire_lock
-from ..storage.policy import ReadPermissionError, WritePermissionError
+from ..storage.policy import ProtectedPathError, ReadPermissionError, WritePermissionError
 from ..storage.revisions import read_text_for_update, revision_result
 from .read import _is_excluded
 
@@ -567,6 +567,7 @@ def move_note(from_path: str, to_path: str, index: VaultIndex | None = None) -> 
     # Collect and lock all files we'll touch
     locks = []
     files_to_rewrite: list[tuple[str, str]] = []
+    skipped_files: list[str] = []
 
     for candidate in all_md:
         rel = candidate.relative
@@ -579,8 +580,13 @@ def move_note(from_path: str, to_path: str, index: VaultIndex | None = None) -> 
         if link_re.search(raw):
             # Link rewriting is a second mutation. Preflight every affected
             # path so a restricted move cannot partially mutate the vault
-            # before discovering an out-of-scope note.
-            _check_write_permission(rel)
+            # before discovering an out-of-scope note. Protected notes
+            # (deny_write_paths, e.g. a generated index) keep their old links.
+            try:
+                _check_write_permission(rel)
+            except ProtectedPathError:
+                skipped_files.append(rel)
+                continue
             files_to_rewrite.append((rel, raw))
 
     try:
@@ -606,7 +612,7 @@ def move_note(from_path: str, to_path: str, index: VaultIndex | None = None) -> 
         for rel in updated_files:
             index.update(rel)
 
-    return {"from": from_path, "to": to_path, "updated_links_in": updated_files}
+    return {"from": from_path, "to": to_path, "updated_links_in": updated_files, "skipped_links_in": skipped_files}
 
 
 def _is_writable(rel_path: str) -> bool:

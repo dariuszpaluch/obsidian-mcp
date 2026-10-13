@@ -153,6 +153,26 @@ def test_index_follows_the_move(tmp_path, vault_factory):
     assert "old.md" not in index.get_all_notes()
 
 
+def test_protected_note_keeps_old_links_and_does_not_block_move(tmp_path, vault_factory, monkeypatch):
+    monkeypatch.setenv("DENY_WRITE_PATHS", "VAULT_MAP.md")
+    vault_factory({"old.md": "x", "a.md": "[[old]]", "VAULT_MAP.md": "- [old](old.md)"})
+    result = relocate("old.md", "new.md")
+    assert (tmp_path / "new.md").exists()
+    assert _read(tmp_path, "a.md") == "[[new]]"
+    assert _read(tmp_path, "VAULT_MAP.md") == "- [old](old.md)"
+    assert result["updated_links_in"] == ["a.md"]
+    assert result["skipped_links_in"] == ["VAULT_MAP.md"]
+    assert all(change["path"] != "VAULT_MAP.md" for change in result["changes"])
+
+
+def test_out_of_scope_link_still_blocks_move(tmp_path, vault_factory, monkeypatch):
+    monkeypatch.setenv("WRITE_PATHS", "Allowed/")
+    vault_factory({"Allowed/old.md": "x", "Other/a.md": "[[Allowed/old]]"})
+    with pytest.raises(PermissionError):
+        relocate("Allowed/old.md", "Allowed/new.md")
+    assert (tmp_path / "Allowed/old.md").exists()
+
+
 # ── archive ───────────────────────────────────────────────────────────────
 
 def test_archive_keeps_original_path_and_fixes_links(tmp_path, vault_factory):

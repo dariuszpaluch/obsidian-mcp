@@ -56,11 +56,13 @@ def _register_move(mcp: FastMCP, index: VaultIndex) -> None:
         [[wikilinks]] (incl. #heading and |alias), ![[embeds]],
         [text](relative/path.md) markdown links, and folder paths in ```dataview
         FROM "..." queries. Links inside code are left alone. A link that still
-        resolves after the move is not touched.
+        resolves after the move is not touched. Protected notes
+        (deny_write_paths, e.g. a generated index) keep their old links and are
+        listed in skipped_links_in instead of blocking the move.
         to_path is the full new path (e.g. 'Bike/Archive Trips/Trip.md' or
         'Projects/New Name' for a folder); the target must not exist.
         dry_run=True only reports what would change.
-        data: {kind, files_moved, updated_links_in, link_changes,
+        data: {kind, files_moved, updated_links_in, skipped_links_in, link_changes,
         changes: [{path, before, after}] (first 100), changes_truncated}."""
         result = relocate(from_path, to_path, dry_run=dry_run, index=index)
         if not dry_run:

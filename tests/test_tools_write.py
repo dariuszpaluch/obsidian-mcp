@@ -527,6 +527,16 @@ def test_move_note_updates_index(vault_factory):
     assert "linker.md" in idx.get_backlinks("new.md")
 
 
+def test_move_note_skips_protected_backlinks(tmp_path, vault_factory, monkeypatch):
+    monkeypatch.setenv("DENY_WRITE_PATHS", "VAULT_MAP.md")
+    vault_factory({"old.md": "Content", "linker.md": "[[old]]", "VAULT_MAP.md": "[[old]]"})
+    result = move_note("old.md", "new.md")
+    assert (tmp_path / "new.md").exists()
+    assert result["updated_links_in"] == ["linker.md"]
+    assert result["skipped_links_in"] == ["VAULT_MAP.md"]
+    assert (tmp_path / "VAULT_MAP.md").read_text() == "[[old]]"
+
+
 def test_move_note_missing_source_raises(vault_factory):
     vault_factory({"other.md": "x"})
     with pytest.raises(FileNotFoundError):
