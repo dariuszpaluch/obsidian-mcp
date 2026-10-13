@@ -1276,7 +1276,8 @@ def manage_tags_tool(
 
 def move_note_tool(from_path: str, to_path: str, vault: str | None = None) -> dict:
     """Rename or move a note. Automatically rewrites all wikilinks in the vault
-    that reference the old path. Returns {from, to, updated_links_in}."""
+    that reference the old path. Protected notes (deny_write_paths) keep their
+    old links. Returns {from, to, updated_links_in, skipped_links_in}."""
     result = move_note(from_path, to_path, index=_index)
     log_write("move_note_tool", to_path, f"moved from {from_path}")
     return _write_envelope(result, path_key="to", action="moved")
