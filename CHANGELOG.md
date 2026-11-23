@@ -5,6 +5,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-11-01
+
+### Fixed
+
+- Heading link anchors (`[[Note#Heading]]`, `![[Note#Heading]]`) were extracted
+  as inline tags, flooding `list_all_tags_tool` with the first words of
+  headings. Wikilinks and embeds are now ignored when scanning for inline tags
+  ([#11](https://github.com/ykoellmann/obsidian-mcp/issues/11),
+  [#12](https://github.com/ykoellmann/obsidian-mcp/pull/12)).
+- A tag in single brackets (`[#todo]`) is now recognised as a tag.
+
+## [2.1.1] - 2026-10-08
+
+### Fixed
+
+- `get_audit_log_tool` advertised a wrapped array `outputSchema` (from a stale
+  `-> list[dict]` annotation) while returning the standard envelope, so clients
+  that validate structured content, such as Claude Code, rejected every call
+  ([#10](https://github.com/ykoellmann/obsidian-mcp/issues/10)).
+
 ## [2.1.0] - 2026-09-16
 
 ### Added — per-identity path policy overrides
